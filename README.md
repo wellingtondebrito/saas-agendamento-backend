@@ -97,3 +97,31 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 # saas-agendamento-backend
+
+## Prettier and VSCode setup
+
+1. Install the recommended VSCode extensions (you'll be prompted): Prettier - Code formatter and ESLint.
+
+2. Run:
+
+```bash
+npm install
+```
+
+3. To format all files with Prettier:
+
+```bash
+npm run format
+```
+
+4. To check formatting without applying changes:
+
+```bash
+npm run format:check
+```
+
+If you use Windows and want consistent LF line endings across the repo, consider running:
+
+```bash
+git config core.autocrlf false
+```

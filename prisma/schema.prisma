@@ -1,0 +1,274 @@
+// --- CORREÇÕES APLICADAS: Tipagem de FKs em Int e Sintaxe de Relações N:N ---
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoUsuario {
+  ADMIN
+  COLABORADOR
+  CLIENTE
+}
+
+enum StatusPedido {
+  PENDENTE
+  PROCESSANDO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+enum StatusAgendamento {
+  PENDENTE
+  CONFIRMADO
+  CANCELADO_CLIENTE
+  CANCELADO_EMPRESA
+  CONCLUIDO
+}
+
+enum StatusAssinatura {
+  ATIVA
+  CANCELADA
+  PENDENTE
+}
+
+model Empresa {
+  id               Int               @id @default(autoincrement())
+  nome             String
+  cnpj             String            @unique
+  endereco         Json?
+  contato          String[]
+  // Relação 1:1 com Admin (adminUsuarioId: Int, correto)
+  adminUsuarioId   Int               @unique 
+  adminUsuario     Usuario           @relation("EmpresaAdmin", fields: [adminUsuarioId], references: [id])
+  
+  // Relações 1:N
+  usuarios         Usuario[]         @relation("EmpresaUsuarios")
+  servicos         Servico[]
+  produtos         Produto[]
+  planosAssinatura PlanoAssinatura[]
+
+  @@map("Empresa")
+}
+
+model Usuario {
+  id           Int            @id @default(autoincrement())
+  email        String         @unique
+  senhaHash    String         @map("senha_hash")
+  nome         String
+  contato      Json?
+  endereco     Json?
+  avatarUrl    String?
+  tipo         TipoUsuario
+  
+  // FK para Empresa. NULO se for CLIENTE. (empresaId: Int?, correto)
+  empresaId    Int?
+  empresa      Empresa?       @relation("EmpresaUsuarios", fields: [empresaId], references: [id])
+  
+  // Relações 1:1 (Perfis)
+  colaborador  Colaborador?
+  cliente      Cliente?
+  
+  // Relação 1:1 com Admin (lado oposto)
+  empresaAdmin Empresa?       @relation("EmpresaAdmin")
+
+  @@map("Usuario")
+}
+
+model Colaborador {
+  id             Int           @id @unique
+  usuario        Usuario       @relation(fields: [id], references: [id])
+  especialidade  String
+  
+  // Relação N:N com Servico (CORRETO: N:N implícito)
+  servicos       Servico[]     @relation("ServicoColaboradores") 
+  // Relação N:N com Especialidade (CORRETO: N:N implícito)
+  especialidades Especialidade[]
+  
+  // Relação 1:N com Agendamento
+  agendamentos   Agendamento[]
+
+  @@map("Colaborador")
+}
+
+model Cliente {
+  id             Int           @id @unique
+  usuario        Usuario       @relation(fields: [id], references: [id])
+  dataCadastro   DateTime      @default(now()) @map("data_cadastro")
+  
+  pedidos        Pedido[]
+  agendamentos   Agendamento[]
+  carrinho       CarrinhoCompra?
+  assinatura     Assinatura?
+
+  @@map("Cliente")
+}
+
+model Servico {
+  id                     Int           @id @default(autoincrement())
+  empresaId              Int
+  empresa                Empresa       @relation(fields: [empresaId], references: [id])
+  nome                   String
+  descricao              String?
+  preco                  Decimal       @db.Decimal(10, 2)
+  duracaoMinutos         Int           @map("duracao_minutos")
+  especialidadeRequerida String        @map("especialidade_requerida")
+  destaque               Boolean       @default(false)
+  
+  // Relação N:N com Colaborador (CORRIGIDO)
+  colaboradores          Colaborador[] @relation("ServicoColaboradores") 
+  
+  // Relação 1:N com Especialidade (Correto)
+  especialidadeId        Int?
+  especialidade          Especialidade? @relation(fields: [especialidadeId], references: [id])
+  agendamentos           Agendamento[]
+
+  @@map("Servico")
+}
+
+// CORRIGIDO: Nome do modelo em PascalCase
+model Especialidade {
+  id            Int           @id @default(autoincrement())
+  nome          String        @unique
+  descricao     String?
+  // Relações N:N implícitas
+  colaboradores Colaborador[]
+  servicos      Servico[]
+
+  @@map("Especialidade")
+}
+
+model Produto {
+  id                     Int            @id @default(autoincrement())
+  empresaId              Int
+  empresa                Empresa        @relation(fields: [empresaId], references: [id])
+  nome                   String
+  descricao              String?
+  preco                  Decimal        @db.Decimal(10, 2)
+  estoque                Int
+  desconto               Boolean        @default(false)
+  percentualDesconto     Int?           @map("percentual_desconto")
+  destaque               Boolean        @default(false)
+  
+  itensCarrinho          ItemCarrinho[]
+  itensPedido            ItemPedido[]
+  // Relação N:N com Categoria (CORRIGIDO)
+  categorias             CategoriaProduto[] @relation("ProdutoCategoria")
+
+  @@map("Produto")
+}
+
+// CORRIGIDO: Nome do modelo em PascalCase
+model CategoriaProduto {
+  id            Int           @id @default(autoincrement())
+  nome          String        @unique
+  descricao     String?
+
+  // Relação N:N com Produto (CORRIGIDO)
+  produtos      Produto[] @relation("ProdutoCategoria")
+
+  @@map("CategoriaProduto")
+}
+
+model PlanoAssinatura {
+  id            Int           @id @default(autoincrement())
+  empresaId     Int
+  empresa       Empresa       @relation(fields: [empresaId], references: [id])
+  nome          String
+  descricao     String?
+  precoMensal   Decimal       @db.Decimal(10, 2) @map("preco_mensal")
+  beneficios    String? 
+  
+  assinaturas   Assinatura[]
+
+  @@map("PlanoAssinatura")
+}
+
+model CarrinhoCompra {
+  id              Int              @id @default(autoincrement())
+  clienteId       Int              @unique @map("cliente_id")
+  cliente         Cliente          @relation(fields: [clienteId], references: [id])
+  
+  dataCriacao     DateTime         @default(now()) @map("data_criacao") 
+  dataAtualizacao DateTime         @updatedAt @map("data_atualizacao")
+
+  itens           ItemCarrinho[]
+
+  @@map("CarrinhoCompra")
+}
+
+model ItemCarrinho {
+  id                      Int            @id @default(autoincrement())
+  carrinhoId              Int            @map("carrinho_id")
+  carrinho                CarrinhoCompra @relation(fields: [carrinhoId], references: [id])
+  produtoId               Int            @map("produto_id")
+  produto                 Produto        @relation(fields: [produtoId], references: [id])
+  
+  quantidade              Int
+  precoUnitarioRegistro   Decimal        @db.Decimal(10, 2) @map("preco_unitario_registro")
+
+  @@unique([carrinhoId, produtoId])
+  @@map("ItemCarrinho")
+}
+
+model Pedido {
+  id            Int            @id @default(autoincrement())
+  clienteId     Int            @map("cliente_id")
+  cliente       Cliente        @relation(fields: [clienteId], references: [id])
+  dataPedido    DateTime       @default(now()) @map("data_pedido")
+  valorTotal    Decimal        @db.Decimal(10, 2) @map("valor_total")
+  status        StatusPedido
+  
+  itensPedido   ItemPedido[]
+
+  @@map("Pedido")
+}
+
+model ItemPedido {
+  id                      Int            @id @default(autoincrement())
+  pedidoId                Int            @map("pedido_id")
+  pedido                  Pedido         @relation(fields: [pedidoId], references: [id])
+  produtoId               Int            @map("produto_id")
+  produto                 Produto        @relation(fields: [produtoId], references: [id])
+  
+  quantidade              Int
+  precoUnitarioRegistro   Decimal        @db.Decimal(10, 2) @map("preco_unitario_registro")
+  
+  @@unique([pedidoId, produtoId])
+  @@map("ItemPedido")
+}
+
+model Assinatura {
+  id            Int              @id @default(autoincrement())
+  clienteId     Int              @unique @map("cliente_id")
+  cliente       Cliente          @relation(fields: [clienteId], references: [id])
+  planoId       Int              @map("plano_id")
+  plano         PlanoAssinatura  @relation(fields: [planoId], references: [id])
+  
+  dataInicio    DateTime         @map("data_inicio")
+  dataFim       DateTime?        @map("data_fim")
+  status        StatusAssinatura
+
+  @@map("Assinatura")
+}
+
+model Agendamento {
+  id              Int                 @id @default(autoincrement())
+  clienteId       Int                 @map("cliente_id")
+  cliente         Cliente             @relation(fields: [clienteId], references: [id])
+  colaboradorId   Int                 @map("colaborador_id")
+  colaborador     Colaborador         @relation(fields: [colaboradorId], references: [id])
+  servicoId       Int                 @map("servico_id")
+  servico         Servico             @relation(fields: [servicoId], references: [id])
+  
+  dataHoraInicio  DateTime            @map("data_hora_inicio")
+  dataHoraFim     DateTime            @map("data_hora_fim")
+  status          StatusAgendamento
+
+  @@map("Agendamento")
+}
